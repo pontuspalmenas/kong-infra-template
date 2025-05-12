@@ -1,0 +1,50 @@
+version: '3'
+
+dotenv: ['.env']
+
+tasks:
+  tf-create-backend:
+    env:
+      BUCKET_NAME:
+        sh: echo $PROJECT-tf-state-$(cat /dev/urandom | base64 | tr -dc 'a-z' | head -c4)
+    cmds:
+      - aws s3 mb s3://$BUCKET_NAME --region $AWS_REGION
+      - |
+        echo "Generating backend-config.tfbackend file..."
+        cat <<EOF > terraform/backend-config.tfbackend
+        bucket="${BUCKET_NAME}"
+        key="terraform.tfstate"
+        region="${AWS_REGION}"
+        EOF
+    preconditions:
+      - sh: 'test ! -f terraform/backend-config.tfbackend'
+        msg: "terraform/backend-config.tfbackend already exists"
+
+  tf-init:
+    cmds:
+      - terraform -chdir=terraform init -backend-config=backend-config.tfbackend
+
+  tf-plan:
+    env:
+      TF_VAR_konnect_pat:
+        sh: aws secretsmanager get-secret-value --region $AWS_REGION --secret-id $PROJECT/konnect --query "SecretString" --output text | jq -r .kpat
+      TF_VAR_owner:
+        sh: echo $OWNER
+      TF_VAR_project:
+        sh: echo $PROJECT
+      TF_VAR_aws_region:
+        sh: echo $AWS_REGION
+    cmd: terraform -chdir=terraform plan --var-file=lab.tfvars
+
+  tf-apply:
+    env:
+      TF_VAR_konnect_pat:
+        sh: aws secretsmanager get-secret-value --region $AWS_REGION --secret-id $PROJECT/konnect --query "SecretString" --output text | jq -r .kpat
+      TF_VAR_owner:
+        sh: echo $OWNER
+      TF_VAR_project:
+        sh: echo $PROJECT
+      TF_VAR_aws_region:
+        sh: echo $AWS_REGION
+    cmd: terraform -chdir=terraform apply --var-file=lab.tfvars {{.CLI_ARGS}}
+
