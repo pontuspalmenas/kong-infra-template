@@ -48,3 +48,26 @@ tasks:
         sh: echo $AWS_REGION
     cmd: terraform -chdir=terraform apply --var-file=lab.tfvars {{.CLI_ARGS}}
 
+  tf-destroy:
+    cmd: terraform -chdir=terraform destroy --var-file=lab.tfvars {{.CLI_ARGS}}
+
+  clean:
+    silent: true
+    env:
+      BUCKET_NAME:
+        sh: grep '^bucket=' terraform/backend-config.tfbackend | cut -d'=' -f2 | tr -d '"'
+    cmds:
+      - |
+        echo -e "\033[1mDo you really want to destroy all resources?\033[0m"
+        echo -e "  This will delete your Terraform state file and the entire S3 bucket.\n  There is no undo. Only 'yes' will be accepted to confirm.\n"
+      - task: confirm
+      - aws s3 rb --force s3://$BUCKET_NAME --region $AWS_REGION
+
+  confirm:
+    silent: true
+    cmds:
+      - |
+        read -p "  Enter a value: " confirm &&
+        if [ "$confirm" != "yes" ]; then \
+        echo "Aborted by user."; exit 1; \
+        fi
